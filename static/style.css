@@ -78,3 +78,21 @@ form.inline { display: inline; }
 .muted { color: var(--muted); }
 .small { font-size: .82rem; }
 .flash { background: color-mix(in srgb, var(--accent) 12%, var(--card)); border: 1px solid var(--line); padding: .5rem .8rem; border-radius: 8px; margin-bottom: .75rem; }
+
+.daily { display: flex; align-items: center; gap: 1rem; margin-top: .9rem; padding: .7rem .9rem; border-radius: 8px; border-left: 4px solid var(--good); background: color-mix(in srgb, var(--good) 8%, transparent); }
+.daily.behind { border-color: #c68a1d; background: color-mix(in srgb, #c68a1d 10%, transparent); }
+.daily.over { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
+.daily-amount { white-space: nowrap; }
+.daily-amount b { font-size: 1.8rem; font-variant-numeric: tabular-nums; }
+.daily-amount span { color: var(--muted); margin-left: .2rem; }
+.daily-detail { font-size: .92rem; }
+.today-stats { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .8rem; white-space: nowrap; }
+.today-stats div span { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.today-stats div b { font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.today-stats .op { color: var(--muted); font-size: 1.2rem; }
+.daily { flex-wrap: wrap; }
+td.pos { color: var(--good); }
+td.neg { color: var(--bad); }
+table.days tr.today td { font-weight: 700; background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.barcol { width: 30%; }
+.bar.mini { margin: 0; height: 6px; }

@@ -26,8 +26,36 @@
     {% set pct = [100, (spent * 100 / available)|round|int]|min %}
     <div class="bar"><div class="fill {{ 'over' if spent > available }}" style="width: {{ [pct, 0]|max }}%"></div></div>
   {% endif %}
+  {% if per_day %}
+  <div class="daily {{ per_day.status }}">
+    {% if per_day.spent_today is defined %}
+    <div class="today-stats">
+      <div><span>Today’s allowance</span><b>{{ per_day.amount|money }}</b></div>
+      <div class="op">−</div>
+      <div><span>Spent today</span><b>{{ per_day.spent_today|money }}</b></div>
+      <div class="op">=</div>
+      <div class="{{ 'neg' if per_day.left_today < 0 else 'pos' }}"><span>Left today</span><b>{{ per_day.left_today|money }}</b></div>
+    </div>
+    {% else %}
+    <div class="daily-amount"><b>{{ per_day.amount|money }}</b><span>/ day</span></div>
+    {% endif %}
+    <div class="daily-detail">
+      {% if per_day.status == 'over' %}
+        <strong>Over budget by {{ (-remaining)|money }}.</strong> Nothing left to spend this month.
+      {% elif per_day.spent_today is defined %}
+        {% if per_day.left_today < 0 %}<strong>{{ (-per_day.left_today)|money }} over today’s allowance.</strong> That lowers your allowance for the rest of the month.<br>{% endif %}
+        Based on what was left this morning, split over the {{ per_day.days_left }} day{{ 's' if per_day.days_left != 1 }} left (including today).
+        {% if per_day.planned and per_day.left_today >= 0 %}
+          <br><span class="muted">An even pace would be {{ per_day.planned|money }}/day —
+          {{ 'you’re ahead of pace.' if per_day.amount >= per_day.planned else 'you’re spending faster than planned.' }}</span>
+        {% endif %}
+      {% else %}
+        You can spend this much per day across all {{ per_day.days_left }} days of the month.
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
   <p class="muted">
-    {% if per_day %}{{ per_day[0]|money }}/day for the remaining {{ per_day[1] }} day{{ 's' if per_day[1] != 1 }}. {% endif %}
     {% if connected %}
       Last bank sync: {{ last_sync or 'never' }}
       <form method="post" action="{{ url_for('sync_now') }}" class="inline"><button class="link">Sync now</button></form>
@@ -94,6 +122,32 @@
     </table>
   </section>
 </div>
+
+<section class="card" id="daily">
+  <h2>Daily spending</h2>
+  {% if days %}
+  <p class="muted small">Each day’s allowance is what was left that morning, split over the days remaining. Spend less than the allowance and future days get more; spend more and they get less.</p>
+  <table class="days">
+    <thead><tr><th>Day</th><th class="num">Allowance</th><th class="num">Spent</th><th class="num">Left</th><th class="barcol"></th></tr></thead>
+    <tbody>
+    {% for d in days|reverse %}
+    <tr class="{{ 'today' if d.is_today }}">
+      <td class="nowrap">{{ d.date.strftime('%a %-d') }}{% if d.is_today %} <span class="badge">today</span>{% endif %}</td>
+      <td class="num muted">{{ d.allowance|money }}</td>
+      <td class="num">{{ d.spent|money if d.spent else '—' }}</td>
+      <td class="num {{ 'neg' if d.left < 0 else 'pos' }}">{{ d.left|money }}</td>
+      <td class="barcol">
+        {% set pct = (100 if d.spent > 0 else 0) if d.allowance <= 0 else [100, [0, (d.spent * 100 / d.allowance)|round|int]|max]|min %}
+        <div class="bar mini"><div class="fill {{ 'over' if d.left < 0 }}" style="width: {{ pct }}%"></div></div>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">This month hasn’t started yet.</p>
+  {% endif %}
+</section>
 
 <section class="card" id="transactions">
   <h2><span class="step">4</span> Transactions</h2>

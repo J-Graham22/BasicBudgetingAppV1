@@ -103,11 +103,53 @@ def month_view(month):
     spent = -sum(t["amount"] for t in all_tx if not t["excluded"])
     remaining = available - spent
 
-    per_day = None
+    # Daily allowance for a given day = money left at the *start* of that day spread over
+    # the days left (that day included). Using start-of-day means spending today lowers
+    # what's "left today" without also shrinking today's allowance.
     today = date.today()
-    if month == today.strftime("%Y-%m"):
-        days_left = calendar.monthrange(today.year, today.month)[1] - today.day + 1
-        per_day = (remaining // days_left, days_left)
+    this_month = today.strftime("%Y-%m")
+    y, m = map(int, month.split("-"))
+    days_in_month = calendar.monthrange(y, m)[1]
+    planned = available // days_in_month if available > 0 else 0  # even pace across the month
+
+    spent_by_day = {}
+    for t in all_tx:
+        if not t["excluded"]:
+            d = int(t["date"][8:10])
+            spent_by_day[d] = spent_by_day.get(d, 0) - t["amount"]
+
+    # Day-by-day breakdown: through today for this month, whole month for past months.
+    last_day = today.day if month == this_month else (days_in_month if month < this_month else 0)
+    days = []
+    spent_before = 0
+    for d in range(1, last_day + 1):
+        allowance = max(available - spent_before, 0) // (days_in_month - d + 1)
+        day_spent = spent_by_day.get(d, 0)
+        days.append({
+            "date": date(y, m, d),
+            "allowance": allowance,
+            "spent": day_spent,
+            "left": allowance - day_spent,
+            "is_today": month == this_month and d == today.day,
+        })
+        spent_before += day_spent
+
+    # Headline: today's numbers for this month, a planning figure for future months.
+    per_day = None
+    if month == this_month:
+        t = days[-1]
+        per_day = {
+            "amount": t["allowance"],
+            "spent_today": t["spent"],
+            "left_today": t["left"],
+            "days_left": days_in_month - today.day + 1,
+            "planned": planned,
+            "status": "over" if remaining < 0 else
+                      "behind" if t["left"] < 0 or t["allowance"] < planned else "ahead",
+        }
+    elif month > this_month:
+        per_day = {"amount": max(remaining, 0) // days_in_month, "days_left": days_in_month,
+                   "planned": planned, "status": "over" if remaining < 0 else "ahead"}
 
     if show == "uncategorized":
         txs = [t for t in all_tx if t["category_id"] is None and not t["excluded"]]
@@ -127,7 +169,7 @@ def month_view(month):
         next_month=shift_month(month, 1),
         income=income, fixed=fixed, total_income=total_income, total_fixed=total_fixed,
         savings=savings, available=available, spent=spent, remaining=remaining,
-        per_day=per_day, reflection=mrow["reflection"],
+        per_day=per_day, days=days, reflection=mrow["reflection"],
         txs=txs, show=show, by_cat=by_cat, uncategorized=uncategorized,
         categories=categories, today=today.isoformat(),
         last_sync=last_sync, connected=connected,
