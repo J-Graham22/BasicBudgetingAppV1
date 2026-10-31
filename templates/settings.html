@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Settings · Kakeibo{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+<div class="grid">
+<section class="card">
+  <h2>Categories</h2>
+  <table>
+    {% for c in categories %}
+    <tr>
+      <td>
+        <form method="post" action="{{ url_for('rename_category', cat_id=c.id) }}" class="inline">
+          <input name="name" value="{{ c.name }}" onchange="this.form.submit()">
+        </form>
+      </td>
+      <td class="muted num">{{ c.n }} tx</td>
+      <td class="x">
+        <form method="post" action="{{ url_for('delete_category', cat_id=c.id) }}" class="inline"
+              onsubmit="return confirm('Delete this category? Its {{ c.n }} transactions become uncategorized.')">
+          <button class="link">✕</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <form method="post" action="{{ url_for('add_category') }}" class="addrow">
+    <input name="name" placeholder="New category" required>
+    <button>Add</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Monthly templates</h2>
+  <p class="muted">Copied into each month the first time you open it. Edit a single month's amounts on its page.</p>
+  <table>
+    {% for r in recurring %}
+    <tr>
+      <td><span class="tag {{ r.kind }}">{{ 'Income' if r.kind == 'income' else 'Fixed' }}</span> {{ r.name }}</td>
+      <td class="num">{{ r.amount|money }}</td>
+      <td class="x">
+        <form method="post" action="{{ url_for('delete_recurring', rec_id=r.id) }}" class="inline"><button class="link">✕</button></form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td class="muted">None yet.</td></tr>
+    {% endfor %}
+  </table>
+  <form method="post" action="{{ url_for('add_recurring') }}" class="addrow">
+    <select name="kind"><option value="income">Income</option><option value="fixed">Fixed expense</option></select>
+    <input name="name" placeholder="Name" required>
+    <input name="amount" placeholder="0.00" inputmode="decimal" class="amt" required>
+    <button>Add</button>
+  </form>
+</section>
+</div>
+
+<section class="card" id="bank">
+  <h2>Bank connection (SimpleFIN)</h2>
+  {% if connected %}
+    <p>Connected. Last sync: {{ last_sync or 'never' }}. Syncs automatically every 6 hours while the app is running.</p>
+    {% for m in sync_messages %}<div class="flash">Bank message: {{ m }}</div>{% endfor %}
+    <form method="post" action="{{ url_for('sync_now') }}" class="inline"><button>Sync now</button></form>
+    <form method="post" action="{{ url_for('simplefin_disconnect') }}" class="inline"
+          onsubmit="return confirm('Disconnect? Imported transactions are kept.')"><button class="secondary">Disconnect</button></form>
+  {% else %}
+    <ol>
+      <li>Create an account at <a href="https://bridge.simplefin.org/simplefin/create" target="_blank" rel="noopener">SimpleFIN Bridge</a> (about $15/year) and link your banks there.</li>
+      <li>In SimpleFIN Bridge, click <b>New connection</b> to generate a <b>setup token</b>.</li>
+      <li>Paste it here. Tokens work only once.</li>
+    </ol>
+    <form method="post" action="{{ url_for('simplefin_connect') }}" class="addrow">
+      <input name="token" placeholder="Paste setup token" required style="flex: 3">
+      <label class="check">Import last <input name="days" value="60" class="amt" style="width: 3.5em"> days</label>
+      <button>Connect</button>
+    </form>
+  {% endif %}
+
+  {% if accounts %}
+  <h3>Accounts</h3>
+  <table>
+    {% for a in accounts %}
+    <tr class="{{ '' if a.enabled else 'excluded' }}">
+      <td>{{ a.org }} — {{ a.name }}</td>
+      <td class="num">{{ a.balance|money if a.balance is not none else '' }}</td>
+      <td class="nowrap">
+        <form method="post" action="{{ url_for('toggle_account', acct_id=a.id) }}" class="inline">
+          <button class="link">{{ 'Stop importing' if a.enabled else 'Resume importing' }}</button>
+        </form>
+        <form method="post" action="{{ url_for('delete_account', acct_id=a.id) }}" class="inline"
+              onsubmit="return confirm('Remove this account AND all of its transactions?')">
+          <button class="link">✕</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="muted small">Tip: if you track a credit card, click <em>Ignore</em> on the payments to it from your checking account so spending isn't counted twice.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Import CSV</h2>
+  <p class="muted">For banks SimpleFIN doesn't support, download a CSV from your bank's website. Re-importing the same file won't duplicate transactions.</p>
+  <form method="post" action="{{ url_for('csv_import') }}" enctype="multipart/form-data" class="addrow">
+    <input type="file" name="file" accept=".csv,text/csv" required>
+    <input name="account" placeholder="Account name (e.g. Chase Visa)" required>
+    <label class="check"><input type="checkbox" name="flip"> purchases are positive numbers</label>
+    <button>Import</button>
+  </form>
+</section>
+{% endblock %}

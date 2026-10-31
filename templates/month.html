@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}{{ month_label }} · Kakeibo{% endblock %}
+{% block content %}
+
+<div class="monthnav">
+  <a href="{{ url_for('month_view', month=prev_month) }}">‹ Prev</a>
+  <h1>{{ month_label }}</h1>
+  <a href="{{ url_for('month_view', month=next_month) }}">Next ›</a>
+</div>
+
+<section class="summary card">
+  <div class="equation">
+    <div><span>Income</span><b>{{ total_income|money }}</b></div>
+    <div class="op">−</div>
+    <div><span>Fixed</span><b>{{ total_fixed|money }}</b></div>
+    <div class="op">−</div>
+    <div><span>Savings</span><b>{{ savings|money }}</b></div>
+    <div class="op">=</div>
+    <div><span>To spend</span><b>{{ available|money }}</b></div>
+    <div class="op">−</div>
+    <div><span>Spent</span><b>{{ spent|money }}</b></div>
+    <div class="op">=</div>
+    <div class="result {{ 'neg' if remaining < 0 else 'pos' }}"><span>Remaining</span><b>{{ remaining|money }}</b></div>
+  </div>
+  {% if available > 0 %}
+    {% set pct = [100, (spent * 100 / available)|round|int]|min %}
+    <div class="bar"><div class="fill {{ 'over' if spent > available }}" style="width: {{ [pct, 0]|max }}%"></div></div>
+  {% endif %}
+  <p class="muted">
+    {% if per_day %}{{ per_day[0]|money }}/day for the remaining {{ per_day[1] }} day{{ 's' if per_day[1] != 1 }}. {% endif %}
+    {% if connected %}
+      Last bank sync: {{ last_sync or 'never' }}
+      <form method="post" action="{{ url_for('sync_now') }}" class="inline"><button class="link">Sync now</button></form>
+    {% else %}
+      <a href="{{ url_for('settings') }}#bank">Connect a bank</a> for automatic transactions.
+    {% endif %}
+  </p>
+</section>
+
+<div class="grid">
+  {% for kind, title, step, rows, total in [
+      ('income', 'Expected income', 1, income, total_income),
+      ('fixed', 'Fixed expenses', 2, fixed, total_fixed)] %}
+  <section class="card" id="{{ kind }}">
+    <h2><span class="step">{{ step }}</span> {{ title }}</h2>
+    <table>
+      {% for i in rows %}
+      <tr>
+        <td>{{ i.name }}</td>
+        <td class="num">
+          <form method="post" action="{{ url_for('update_item', item_id=i.id) }}" class="inline">
+            <input name="amount" value="{{ i.amount|dollars }}" inputmode="decimal" class="amt" onchange="this.form.submit()">
+          </form>
+        </td>
+        <td class="x">
+          <form method="post" action="{{ url_for('delete_item', item_id=i.id) }}" class="inline"><button class="link" title="Remove">✕</button></form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="muted">Nothing yet.</td></tr>
+      {% endfor %}
+      <tr class="total"><td>Total</td><td class="num">{{ total|money }}</td><td></td></tr>
+    </table>
+    <form method="post" action="{{ url_for('add_item', month=month) }}" class="addrow">
+      <input type="hidden" name="kind" value="{{ kind }}">
+      <input name="name" placeholder="{{ 'Paycheck' if kind == 'income' else 'Rent' }}" required>
+      <input name="amount" placeholder="0.00" inputmode="decimal" class="amt" required>
+      <label class="check"><input type="checkbox" name="recurring" checked> monthly</label>
+      <button>Add</button>
+    </form>
+  </section>
+  {% endfor %}
+
+  <section class="card" id="savings">
+    <h2><span class="step">3</span> Savings goal</h2>
+    <form method="post" action="{{ url_for('set_savings', month=month) }}" class="addrow">
+      <input name="amount" value="{{ savings|dollars }}" inputmode="decimal" class="amt">
+      <button>Set</button>
+    </form>
+    <p class="muted">Set this aside first. It carries forward to new months.</p>
+  </section>
+
+  <section class="card">
+    <h2>Spending by category</h2>
+    <table>
+      {% for c in by_cat %}
+      <tr>
+        <td><a href="?show={{ c.id if c.id else 'uncategorized' }}#transactions">{{ c.name }}</a> <span class="muted">({{ c.n }})</span></td>
+        <td class="num">{{ c.spent|money }}</td>
+      </tr>
+      {% else %}
+      <tr><td class="muted">No spending yet.</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+</div>
+
+<section class="card" id="transactions">
+  <h2><span class="step">4</span> Transactions</h2>
+  <div class="tabs">
+    <a href="?show=all#transactions" class="{{ 'active' if show == 'all' }}">All</a>
+    <a href="?show=uncategorized#transactions" class="{{ 'active' if show == 'uncategorized' }}">Uncategorized{% if uncategorized %} <span class="badge">{{ uncategorized }}</span>{% endif %}</a>
+    <a href="?show=excluded#transactions" class="{{ 'active' if show == 'excluded' }}">Not counted</a>
+  </div>
+
+  <form method="post" action="{{ url_for('add_tx') }}" class="addrow">
+    <input type="date" name="date" value="{{ today if today.startswith(month) else month ~ '-01' }}" required>
+    <input name="description" placeholder="Description" required>
+    <select name="direction"><option value="out">Spent</option><option value="in">Refund / in</option></select>
+    <input name="amount" placeholder="0.00" inputmode="decimal" class="amt" required>
+    <select name="category_id">
+      <option value="">— Category —</option>
+      {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+    </select>
+    <button>Add</button>
+  </form>
+
+  <table class="tx">
+    <thead><tr><th>Date</th><th>Description</th><th>Account</th><th class="num">Amount</th><th>Category</th><th></th></tr></thead>
+    <tbody>
+    {% for t in txs %}
+    <tr id="tx-{{ t.id }}" class="{{ 'excluded' if t.excluded }} {{ 'uncat' if not t.category_id and not t.excluded }}">
+      <td class="nowrap">{{ t.date[5:] }}</td>
+      <td>{{ t.description }}</td>
+      <td class="muted">{{ t.account_name or 'Manual' }}</td>
+      <td class="num {{ 'in' if t.amount > 0 }}">{{ t.amount|money }}</td>
+      <td>
+        <form method="post" action="{{ url_for('update_tx', tx_id=t.id) }}" class="inline">
+          <select name="category_id" onchange="this.form.submit()">
+            <option value="">—</option>
+            {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if c.id == t.category_id }}>{{ c.name }}</option>{% endfor %}
+          </select>
+        </form>
+      </td>
+      <td class="nowrap">
+        <form method="post" action="{{ url_for('update_tx', tx_id=t.id) }}" class="inline">
+          <input type="hidden" name="excluded" value="{{ 0 if t.excluded else 1 }}">
+          <button class="link" title="{{ 'Count this toward spending' if t.excluded else 'Don’t count (transfer, paycheck, card payment)' }}">{{ 'Count' if t.excluded else 'Ignore' }}</button>
+        </form>
+        {% if t.source == 'manual' %}
+        <form method="post" action="{{ url_for('delete_tx', tx_id=t.id) }}" class="inline" onsubmit="return confirm('Delete this transaction?')">
+          <button class="link" title="Delete">✕</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="muted">No transactions{{ ' here' if show != 'all' }}.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small">Money coming in (paychecks, refunds) is imported as "not counted" since income is planned above — click <em>Count</em> on refunds. Click <em>Ignore</em> on transfers and credit-card payments so they aren't double-counted.</p>
+</section>
+
+<section class="card" id="reflection">
+  <h2>Month-end reflection</h2>
+  <p class="muted">How much did you want to save? How much did you actually save? How much did you spend? How can you improve?</p>
+  <form method="post" action="{{ url_for('set_reflection', month=month) }}">
+    <textarea name="reflection" rows="4">{{ reflection }}</textarea>
+    <button>Save</button>
+  </form>
+</section>
+{% endblock %}
